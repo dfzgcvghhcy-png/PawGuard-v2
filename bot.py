@@ -31,7 +31,7 @@ async def main():
                 [
                     InlineKeyboardButton(
                         text="🌐 Открыть сайт",
-                        url=https://google.com
+                        url="https://google.com"
                     )
                 ]
             ]
