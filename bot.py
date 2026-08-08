@@ -1,9 +1,10 @@
 import asyncio
 import os
+from datetime import timedelta
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 
 
 BOT_NAME = "PawGuard"
@@ -52,17 +53,13 @@ async def main():
         text = (
             "📖 <b>Команды бота:</b>\n\n"
             "👮‍♂️ Модерация:\n"
-            "/ban — забанить пользователя\n"
-            "/mute — замутить пользователя\n"
-            "/unban — разбан\n"
+            "/ban — бан\n"
+            "/mute — мут (10 минут)\n"
             "/unmute — размут\n\n"
             "⚠️ Предупреждения:\n"
-            "/warn — выдать предупреждение\n"
-            "/unwarn — снять предупреждение\n\n"
+            "/warn — предупреждение\n\n"
             "📊 Прочее:\n"
-            "/stats — статистика пользователя\n"
-            "/help — список команд\n\n"
-            "🚀 Больше функций скоро..."
+            "/help — список команд"
         )
 
         await message.answer(text, parse_mode="HTML")
@@ -73,7 +70,7 @@ async def main():
     @dp.message(Command("ban"))
     async def cmd_ban(message: types.Message):
         if not message.reply_to_message:
-            await message.answer("❗ Ответь на сообщение пользователя, чтобы забанить")
+            await message.answer("❗ Ответь на сообщение пользователя")
             return
 
         user_id = message.reply_to_message.from_user.id
@@ -84,9 +81,53 @@ async def main():
                 user_id=user_id
             )
             await message.answer("🔨 Пользователь забанен")
-
         except Exception as e:
             await message.answer("❌ Ошибка бана")
+            print(e)
+
+    # =======================
+    # 🔇 MUTE (10 минут)
+    # =======================
+    @dp.message(Command("mute"))
+    async def cmd_mute(message: types.Message):
+        if not message.reply_to_message:
+            await message.answer("❗ Ответь на сообщение пользователя")
+            return
+
+        user_id = message.reply_to_message.from_user.id
+
+        try:
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=user_id,
+                permissions=ChatPermissions(can_send_messages=False),
+                until_date=timedelta(minutes=10)
+            )
+            await message.answer("🔇 Пользователь замучен на 10 минут")
+        except Exception as e:
+            await message.answer("❌ Ошибка мута")
+            print(e)
+
+    # =======================
+    # 🔊 UNMUTE
+    # =======================
+    @dp.message(Command("unmute"))
+    async def cmd_unmute(message: types.Message):
+        if not message.reply_to_message:
+            await message.answer("❗ Ответь на сообщение пользователя")
+            return
+
+        user_id = message.reply_to_message.from_user.id
+
+        try:
+            await bot.restrict_chat_member(
+                chat_id=message.chat.id,
+                user_id=user_id,
+                permissions=ChatPermissions(can_send_messages=True)
+            )
+            await message.answer("🔊 Пользователь размучен")
+        except Exception as e:
+            await message.answer("❌ Ошибка размута")
             print(e)
 
     print("🐾 PawGuard запущен")
