@@ -11,18 +11,19 @@ BOT_NAME = "PawGuard"
 CREATOR = "Evan"
 WEBSITE_URL = "https://google.com"
 
+# память
 user_warns = {}
+user_cache = {}
 
 
 # =======================
 # 🔍 Получение user_id
 # =======================
 async def get_target_user(message: types.Message):
-    # 1. Если ответ на сообщение
+    # reply
     if message.reply_to_message:
         return message.reply_to_message.from_user.id
 
-    # 2. Если указан username или id
     args = message.text.split()
 
     if len(args) < 2:
@@ -30,19 +31,16 @@ async def get_target_user(message: types.Message):
 
     target = args[1]
 
-    # если @username
+    # @username
     if target.startswith("@"):
-        username = target[1:]
+        username = target[1:].lower()
 
-        members = await message.bot.get_chat_administrators(message.chat.id)
-        for member in members:
-            if member.user.username == username:
-                return member.user.id
+        if username in user_cache:
+            return user_cache[username]
 
-        # ⚠️ Telegram НЕ даёт получать всех пользователей по username
         return None
 
-    # если user_id
+    # user_id
     if target.isdigit():
         return int(target)
 
@@ -52,6 +50,14 @@ async def get_target_user(message: types.Message):
 async def main():
     bot = Bot(token=os.getenv("BOT_TOKEN"))
     dp = Dispatcher()
+
+    # =======================
+    # 📦 КЭШ ПОЛЬЗОВАТЕЛЕЙ
+    # =======================
+    @dp.message()
+    async def cache_users(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
 
     # =======================
     # 🟢 START
@@ -90,11 +96,11 @@ async def main():
         text = (
             "📖 <b>Команды бота:</b>\n\n"
             "👮‍♂️ Модерация:\n"
-            "/ban @user | reply\n"
-            "/mute @user | reply\n"
-            "/unmute @user | reply\n\n"
+            "/ban @user | reply | id\n"
+            "/mute @user | reply | id\n"
+            "/unmute @user | reply | id\n\n"
             "⚠️ Предупреждения:\n"
-            "/warn @user | reply\n"
+            "/warn @user | reply | id\n"
         )
 
         await message.answer(text, parse_mode="HTML")
@@ -107,7 +113,7 @@ async def main():
         user_id = await get_target_user(message)
 
         if not user_id:
-            await message.answer("❗ Укажи пользователя (@username, id или reply)")
+            await message.answer("❗ Пользователь не найден (пусть напишет сообщение)")
             return
 
         try:
@@ -125,7 +131,7 @@ async def main():
         user_id = await get_target_user(message)
 
         if not user_id:
-            await message.answer("❗ Укажи пользователя")
+            await message.answer("❗ Пользователь не найден")
             return
 
         try:
@@ -135,7 +141,7 @@ async def main():
                 permissions=ChatPermissions(can_send_messages=False),
                 until_date=timedelta(minutes=10)
             )
-            await message.answer("🔇 Пользователь замучен")
+            await message.answer("🔇 Пользователь замучен на 10 минут")
         except Exception as e:
             await message.answer("❌ Ошибка мута")
             print(e)
@@ -148,7 +154,7 @@ async def main():
         user_id = await get_target_user(message)
 
         if not user_id:
-            await message.answer("❗ Укажи пользователя")
+            await message.answer("❗ Пользователь не найден")
             return
 
         try:
@@ -170,7 +176,7 @@ async def main():
         user_id = await get_target_user(message)
 
         if not user_id:
-            await message.answer("❗ Укажи пользователя")
+            await message.answer("❗ Пользователь не найден")
             return
 
         user_warns[user_id] = user_warns.get(user_id, 0) + 1
@@ -187,7 +193,7 @@ async def main():
                     until_date=timedelta(minutes=10)
                 )
                 user_warns[user_id] = 0
-                await message.answer("🔇 3 варна → мут")
+                await message.answer("🔇 3 варна → мут на 10 минут")
             except Exception as e:
                 print(e)
 
