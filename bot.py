@@ -6,18 +6,79 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
 
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import Column, Integer, String, select
+
 
 BOT_NAME = "PawGuard"
 CREATOR = "Evan"
 WEBSITE_URL = "https://google.com"
 
-user_warns = {}
-user_cache = {}
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+Base = declarative_base()
 
 
 # =======================
-# 🔍 Получение user_id
+# 📊 МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ
 # =======================
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True)
+    tg_id = Column(Integer, unique=True)
+    username = Column(String)
+
+
+# =======================
+# 🔧 БАЗА
+# =======================
+engine = create_async_engine(DATABASE_URL)
+SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+
+async def init_db():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+# =======================
+# 💾 СОХРАНЕНИЕ ПОЛЬЗОВАТЕЛЯ
+# =======================
+async def save_user(user: types.User):
+    async with SessionLocal() as session:
+        result = await session.execute(select(User).where(User.tg_id == user.id))
+        db_user = result.scalar_one_or_none()
+
+        if not db_user:
+            new_user = User(
+                tg_id=user.id,
+                username=user.username
+            )
+            session.add(new_user)
+        else:
+            db_user.username = user.username
+
+        await session.commit()
+
+
+# =======================
+# 🔍 ПОИСК USER_ID
+# =======================
+async def get_user_id(username: str):
+    async with SessionLocal() as session:
+        result = await session.execute(
+            select(User).where(User.username == username)
+        )
+        user = result.scalar_one_or_none()
+
+        if user:
+            return user.tg_id
+
+    return None
+
+
 async def get_target_user(message: types.Message):
     if message.reply_to_message:
         return message.reply_to_message.from_user.id
@@ -30,8 +91,7 @@ async def get_target_user(message: types.Message):
     target = args[1]
 
     if target.startswith("@"):
-        username = target[1:].lower()
-        return user_cache.get(username)
+        return await get_user_id(target[1:])
 
     if target.isdigit():
         return int(target)
@@ -39,35 +99,31 @@ async def get_target_user(message: types.Message):
     return None
 
 
+# =======================
+# 🚀 MAIN
+# =======================
 async def main():
     bot = Bot(token=os.getenv("BOT_TOKEN"))
     dp = Dispatcher()
+
+    await init_db()
 
     # =======================
     # 🟢 START
     # =======================
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
+        await save_user(message.from_user)
 
         text = (
             f"🐾 <b>{BOT_NAME}</b>\n\n"
-            "Привет! Я бот для модерации чатов.\n\n"
-            "⚡ Что я умею:\n"
-            "• Бан / мут\n"
-            "• Варны\n\n"
+            "Привет! Я бот для модерации.\n\n"
             f"👨‍💻 Создатель: {CREATOR}"
         )
 
         keyboard = InlineKeyboardMarkup(
             inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="🌐 Сайт",
-                        url=WEBSITE_URL
-                    )
-                ]
+                [InlineKeyboardButton(text="🌐 Сайт", url=WEBSITE_URL)]
             ]
         )
 
@@ -78,73 +134,59 @@ async def main():
     # =======================
     @dp.message(Command("help"))
     async def cmd_help(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
+        await save_user(message.from_user)
 
-        text = (
-            "📖 <b>Команды:</b>\n\n"
-            "/ban @user | reply | id\n"
-            "/mute @user | reply | id\n"
-            "/unmute @user | reply | id\n"
-            "/warn @user | reply | id\n"
+        await message.answer(
+            "/ban @user\n"
+            "/mute @user\n"
+            "/unmute @user\n"
+            "/warn @user"
         )
-
-        await message.answer(text, parse_mode="HTML")
 
     # =======================
     # 🔨 BAN
     # =======================
     @dp.message(Command("ban"))
     async def cmd_ban(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
+        await save_user(message.from_user)
 
         user_id = await get_target_user(message)
 
         if not user_id:
-            await message.answer("❗ Пользователь не найден (пусть напишет сообщение)")
+            await message.answer("❗ Пользователь не найден в базе")
             return
 
-        try:
-            await bot.ban_chat_member(message.chat.id, user_id)
-            await message.answer("🔨 Забанен")
-        except Exception as e:
-            await message.answer("❌ Ошибка")
-            print(e)
+        await bot.ban_chat_member(message.chat.id, user_id)
+        await message.answer("🔨 Забанен")
 
     # =======================
     # 🔇 MUTE
     # =======================
     @dp.message(Command("mute"))
     async def cmd_mute(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
+        await save_user(message.from_user)
 
         user_id = await get_target_user(message)
 
         if not user_id:
-            await message.answer("❗ Пользователь не найден")
+            await message.answer("❗ Пользователь не найден в базе")
             return
 
-        try:
-            await bot.restrict_chat_member(
-                message.chat.id,
-                user_id,
-                permissions=ChatPermissions(can_send_messages=False),
-                until_date=timedelta(minutes=10)
-            )
-            await message.answer("🔇 Замучен")
-        except Exception as e:
-            await message.answer("❌ Ошибка")
-            print(e)
+        await bot.restrict_chat_member(
+            message.chat.id,
+            user_id,
+            permissions=ChatPermissions(can_send_messages=False),
+            until_date=timedelta(minutes=10)
+        )
+
+        await message.answer("🔇 Замучен")
 
     # =======================
     # 🔊 UNMUTE
     # =======================
     @dp.message(Command("unmute"))
     async def cmd_unmute(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
+        await save_user(message.from_user)
 
         user_id = await get_target_user(message)
 
@@ -152,50 +194,15 @@ async def main():
             await message.answer("❗ Пользователь не найден")
             return
 
-        try:
-            await bot.restrict_chat_member(
-                message.chat.id,
-                user_id,
-                permissions=ChatPermissions(can_send_messages=True)
-            )
-            await message.answer("🔊 Размучен")
-        except Exception as e:
-            await message.answer("❌ Ошибка")
-            print(e)
+        await bot.restrict_chat_member(
+            message.chat.id,
+            user_id,
+            permissions=ChatPermissions(can_send_messages=True)
+        )
 
-    # =======================
-    # ⚠️ WARN
-    # =======================
-    @dp.message(Command("warn"))
-    async def cmd_warn(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
+        await message.answer("🔊 Размучен")
 
-        user_id = await get_target_user(message)
-
-        if not user_id:
-            await message.answer("❗ Пользователь не найден")
-            return
-
-        user_warns[user_id] = user_warns.get(user_id, 0) + 1
-        warns = user_warns[user_id]
-
-        await message.answer(f"⚠️ Warn ({warns}/3)")
-
-        if warns >= 3:
-            try:
-                await bot.restrict_chat_member(
-                    message.chat.id,
-                    user_id,
-                    permissions=ChatPermissions(can_send_messages=False),
-                    until_date=timedelta(minutes=10)
-                )
-                user_warns[user_id] = 0
-                await message.answer("🔇 3 варна → мут")
-            except Exception as e:
-                print(e)
-
-    print("🐾 PawGuard запущен")
+    print("🐾 PawGuard с БД запущен")
     await dp.start_polling(bot)
 
 
