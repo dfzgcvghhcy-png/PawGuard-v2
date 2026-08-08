@@ -1,210 +1,152 @@
 import asyncio
 import os
-from datetime import timedelta
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
+from aiogram.types import Message
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy import Column, Integer, String, select
 
+# ================= CONFIG =================
 
-BOT_NAME = "PawGuard"
-CREATOR = "Evan"
-WEBSITE_URL = "https://google.com"
-
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# ================= DB =================
 
 Base = declarative_base()
 
-
-# =======================
-# 📊 МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ
-# =======================
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True)
-    tg_id = Column(Integer, unique=True)
+    user_id = Column(Integer, unique=True)
     username = Column(String)
+    full_name = Column(String)
 
-
-# =======================
-# 🔧 БАЗА
-# =======================
 engine = create_async_engine(DATABASE_URL)
 SessionLocal = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
+# ================= BOT =================
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
+# ================= DB FUNCTIONS =================
 
-# =======================
-# 💾 СОХРАНЕНИЕ ПОЛЬЗОВАТЕЛЯ
-# =======================
-async def save_user(user: types.User):
+async def add_user(user: types.User):
     async with SessionLocal() as session:
-        result = await session.execute(select(User).where(User.tg_id == user.id))
-        db_user = result.scalar_one_or_none()
+        result = await session.execute(
+            select(User).where(User.user_id == user.id)
+        )
+        existing = result.scalar()
 
-        if not db_user:
+        if not existing:
             new_user = User(
-                tg_id=user.id,
-                username=user.username
+                user_id=user.id,
+                username=user.username,
+                full_name=user.full_name
             )
             session.add(new_user)
-        else:
-            db_user.username = user.username
+            await session.commit()
 
-        await session.commit()
+# ================= HANDLERS =================
 
+@dp.message(Command("start"))
+async def start(message: Message):
+    await add_user(message.from_user)
 
-# =======================
-# 🔍 ПОИСК USER_ID
-# =======================
-async def get_user_id(username: str):
+    kb = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                types.InlineKeyboardButton(
+                    text="🌐 Открыть сайт",
+                    url="https://google.com"
+                )
+            ]
+        ]
+    )
+
+    await message.answer(
+        f"👋 Привет, {message.from_user.full_name}!\n\n"
+        f"Я модератор-бот PawGuard 🐾\n"
+        f"Используй /help чтобы увидеть команды",
+        reply_markup=kb
+    )
+
+@dp.message(Command("help"))
+async def help_cmd(message: Message):
+    await message.answer(
+        "📜 Команды:\n\n"
+        "/ban @user\n"
+        "/mute @user\n"
+        "/unmute @user\n"
+        "/warn @user\n"
+    )
+
+# ================= AUTO COLLECT =================
+
+@dp.message()
+async def auto_collect(message: Message):
+    await add_user(message.from_user)
+
+# ================= FIND USER =================
+
+async def get_user_by_username(username: str):
     async with SessionLocal() as session:
         result = await session.execute(
             select(User).where(User.username == username)
         )
-        user = result.scalar_one_or_none()
+        return result.scalar()
 
-        if user:
-            return user.tg_id
+# ================= COMMANDS =================
 
-    return None
+@dp.message(Command("mute"))
+async def mute_user(message: Message):
+    if not message.text:
+        return
 
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer("❗ Укажи пользователя")
+        return
 
-async def get_target_user(message: types.Message):
-    if message.reply_to_message:
-        return message.reply_to_message.from_user.id
+    username = parts[1].replace("@", "")
 
-    args = message.text.split()
+    user = await get_user_by_username(username)
 
-    if len(args) < 2:
-        return None
+    if not user:
+        await message.answer("❗ Пользователь не найден в базе")
+        return
 
-    target = args[1]
+    await message.answer(f"🔇 Пользователь @{username} замьючен")
 
-    if target.startswith("@"):
-        return await get_user_id(target[1:])
+@dp.message(Command("ban"))
+async def ban_user(message: Message):
+    parts = message.text.split()
+    if len(parts) < 2:
+        await message.answer("❗ Укажи пользователя")
+        return
 
-    if target.isdigit():
-        return int(target)
+    username = parts[1].replace("@", "")
 
-    return None
+    user = await get_user_by_username(username)
 
+    if not user:
+        await message.answer("❗ Пользователь не найден в базе")
+        return
 
-# =======================
-# 🚀 MAIN
-# =======================
+    await message.answer(f"🔨 Пользователь @{username} забанен")
+
+# ================= START =================
+
 async def main():
-    bot = Bot(token=os.getenv("BOT_TOKEN"))
-    dp = Dispatcher()
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-    await init_db()
-
-    # =======================
-    # 🟢 START
-    # =======================
-    @dp.message(Command("start"))
-    async def cmd_start(message: types.Message):
-        await save_user(message.from_user)
-
-        text = (
-            f"🐾 <b>{BOT_NAME}</b>\n\n"
-            "Привет! Я бот для модерации.\n\n"
-            f"👨‍💻 Создатель: {CREATOR}"
-        )
-
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 Сайт", url=WEBSITE_URL)]
-            ]
-        )
-
-        await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
-
-    # =======================
-    # 📖 HELP
-    # =======================
-    @dp.message(Command("help"))
-    async def cmd_help(message: types.Message):
-        await save_user(message.from_user)
-
-        await message.answer(
-            "/ban @user\n"
-            "/mute @user\n"
-            "/unmute @user\n"
-            "/warn @user"
-        )
-
-    # =======================
-    # 🔨 BAN
-    # =======================
-    @dp.message(Command("ban"))
-    async def cmd_ban(message: types.Message):
-        await save_user(message.from_user)
-
-        user_id = await get_target_user(message)
-
-        if not user_id:
-            await message.answer("❗ Пользователь не найден в базе")
-            return
-
-        await bot.ban_chat_member(message.chat.id, user_id)
-        await message.answer("🔨 Забанен")
-
-    # =======================
-    # 🔇 MUTE
-    # =======================
-    @dp.message(Command("mute"))
-    async def cmd_mute(message: types.Message):
-        await save_user(message.from_user)
-
-        user_id = await get_target_user(message)
-
-        if not user_id:
-            await message.answer("❗ Пользователь не найден в базе")
-            return
-
-        await bot.restrict_chat_member(
-            message.chat.id,
-            user_id,
-            permissions=ChatPermissions(can_send_messages=False),
-            until_date=timedelta(minutes=10)
-        )
-
-        await message.answer("🔇 Замучен")
-
-    # =======================
-    # 🔊 UNMUTE
-    # =======================
-    @dp.message(Command("unmute"))
-    async def cmd_unmute(message: types.Message):
-        await save_user(message.from_user)
-
-        user_id = await get_target_user(message)
-
-        if not user_id:
-            await message.answer("❗ Пользователь не найден")
-            return
-
-        await bot.restrict_chat_member(
-            message.chat.id,
-            user_id,
-            permissions=ChatPermissions(can_send_messages=True)
-        )
-
-        await message.answer("🔊 Размучен")
-
-    print("🐾 PawGuard с БД запущен")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
