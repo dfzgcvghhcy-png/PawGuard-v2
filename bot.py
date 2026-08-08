@@ -44,24 +44,19 @@ async def main():
     dp = Dispatcher()
 
     # =======================
-    # 📦 КЭШ (НЕ ломает команды)
-    # =======================
-    @dp.message()
-    async def cache_all(message: types.Message):
-        if message.from_user.username:
-            user_cache[message.from_user.username.lower()] = message.from_user.id
-
-    # =======================
     # 🟢 START
     # =======================
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
+
         text = (
             f"🐾 <b>{BOT_NAME}</b>\n\n"
             "Привет! Я бот для модерации чатов.\n\n"
             "⚡ Что я умею:\n"
-            "• Бан / мут пользователей\n"
-            "• Предупреждения\n\n"
+            "• Бан / мут\n"
+            "• Варны\n\n"
             f"👨‍💻 Создатель: {CREATOR}"
         )
 
@@ -83,6 +78,9 @@ async def main():
     # =======================
     @dp.message(Command("help"))
     async def cmd_help(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
+
         text = (
             "📖 <b>Команды:</b>\n\n"
             "/ban @user | reply | id\n"
@@ -98,6 +96,9 @@ async def main():
     # =======================
     @dp.message(Command("ban"))
     async def cmd_ban(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
+
         user_id = await get_target_user(message)
 
         if not user_id:
@@ -116,6 +117,9 @@ async def main():
     # =======================
     @dp.message(Command("mute"))
     async def cmd_mute(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
+
         user_id = await get_target_user(message)
 
         if not user_id:
@@ -139,6 +143,9 @@ async def main():
     # =======================
     @dp.message(Command("unmute"))
     async def cmd_unmute(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
+
         user_id = await get_target_user(message)
 
         if not user_id:
@@ -161,6 +168,9 @@ async def main():
     # =======================
     @dp.message(Command("warn"))
     async def cmd_warn(message: types.Message):
+        if message.from_user.username:
+            user_cache[message.from_user.username.lower()] = message.from_user.id
+
         user_id = await get_target_user(message)
 
         if not user_id:
