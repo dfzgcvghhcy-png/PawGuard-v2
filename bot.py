@@ -11,6 +11,9 @@ BOT_NAME = "PawGuard"
 CREATOR = "Evan"
 WEBSITE_URL = "https://google.com"
 
+# ⚠️ ХРАНИЛИЩЕ WARN (временно)
+user_warns = {}
+
 
 async def main():
     bot = Bot(token=os.getenv("BOT_TOKEN"))
@@ -86,7 +89,7 @@ async def main():
             print(e)
 
     # =======================
-    # 🔇 MUTE (10 минут)
+    # 🔇 MUTE
     # =======================
     @dp.message(Command("mute"))
     async def cmd_mute(message: types.Message):
@@ -129,6 +132,39 @@ async def main():
         except Exception as e:
             await message.answer("❌ Ошибка размута")
             print(e)
+
+    # =======================
+    # ⚠️ WARN
+    # =======================
+    @dp.message(Command("warn"))
+    async def cmd_warn(message: types.Message):
+        if not message.reply_to_message:
+            await message.answer("❗ Ответь на сообщение пользователя")
+            return
+
+        user_id = message.reply_to_message.from_user.id
+
+        # увеличиваем варны
+        user_warns[user_id] = user_warns.get(user_id, 0) + 1
+        warns = user_warns[user_id]
+
+        await message.answer(f"⚠️ Пользователь получил предупреждение ({warns}/3)")
+
+        # авто-мут на 3 варна
+        if warns >= 3:
+            try:
+                await bot.restrict_chat_member(
+                    chat_id=message.chat.id,
+                    user_id=user_id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                    until_date=timedelta(minutes=10)
+                )
+
+                user_warns[user_id] = 0  # сброс
+                await message.answer("🔇 3 варна → пользователь замучен на 10 минут")
+
+            except Exception as e:
+                print(e)
 
     print("🐾 PawGuard запущен")
 
