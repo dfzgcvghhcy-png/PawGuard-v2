@@ -8,14 +8,16 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 BOT_NAME = "PawGuard"
 CREATOR = "Evan"
-WEBSITE_URL = "https://google.com"  # потом поменяешь
+WEBSITE_URL = "https://google.com"
 
 
 async def main():
     bot = Bot(token=os.getenv("BOT_TOKEN"))
     dp = Dispatcher()
 
-    # ✅ START
+    # =======================
+    # 🟢 START
+    # =======================
     @dp.message(Command("start"))
     async def cmd_start(message: types.Message):
         text = (
@@ -42,7 +44,9 @@ async def main():
 
         await message.answer(text, reply_markup=keyboard, parse_mode="HTML")
 
-    # ✅ HELP
+    # =======================
+    # 📖 HELP
+    # =======================
     @dp.message(Command("help"))
     async def cmd_help(message: types.Message):
         text = (
@@ -62,6 +66,28 @@ async def main():
         )
 
         await message.answer(text, parse_mode="HTML")
+
+    # =======================
+    # 🔨 BAN
+    # =======================
+    @dp.message(Command("ban"))
+    async def cmd_ban(message: types.Message):
+        if not message.reply_to_message:
+            await message.answer("❗ Ответь на сообщение пользователя, чтобы забанить")
+            return
+
+        user_id = message.reply_to_message.from_user.id
+
+        try:
+            await bot.ban_chat_member(
+                chat_id=message.chat.id,
+                user_id=user_id
+            )
+            await message.answer("🔨 Пользователь забанен")
+
+        except Exception as e:
+            await message.answer("❌ Ошибка бана")
+            print(e)
 
     print("🐾 PawGuard запущен")
 
