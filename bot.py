@@ -45,3 +45,23 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+@dp.message(Command("help"))
+async def cmd_help(message: types.Message):
+    text = (
+        "📖 <b>Команды бота:</b>\n\n"
+        "👮‍♂️ Модерация:\n"
+        "/ban — забанить пользователя\n"
+        "/mute — замутить пользователя\n"
+        "/unban — разбан\n"
+        "/unmute — размут\n\n"
+        "⚠️ Предупреждения:\n"
+        "/warn — выдать предупреждение\n"
+        "/unwarn — снять предупреждение\n\n"
+        "📊 Прочее:\n"
+        "/stats — статистика пользователя\n"
+        "/help — список команд\n\n"
+        "🚀 Больше функций скоро..."
+    )
+
+    await message.answer(text, parse_mode="HTML")
